@@ -62,6 +62,11 @@ if (!function_exists('smarty_price_update_callback')) {
             if (isset($_POST['smarty_bpu_sale_price_percentage']) && $_POST['smarty_bpu_sale_price_percentage'] != 0) {
                 smarty_apply_sale_price_percentage();
             }
+
+            if (isset($_POST['smarty_bpu_remove_sale_prices'])) {
+                smarty_remove_sale_price();
+                return; // Exit to prevent further processing
+            }
         } ?>
         <div class="wrap">
             <h1><?php echo __('Bulk Price Updater | Settings', 'smarty-bulk-price-updater'); ?></h1>
@@ -139,6 +144,7 @@ if (!function_exists('smarty_price_update_callback')) {
                 </table>
                 <p class="submit">
                     <input type="submit" name="smarty_bpu_submit" class="button button-primary" value="<?php echo __('Save Changes', 'smarty-bulk-price-updater'); ?>">
+                    <input type="submit" name="smarty_bpu_remove_sale_prices" class="button button-secondary" value="<?php echo __('Remove Sale Prices', 'smarty-bulk-price-updater'); ?>">
                 </p>
             </form>
         </div>
@@ -380,6 +386,64 @@ if (!function_exists('smarty_apply_sale_price_percentage')) {
     }
 }
 
+if (!function_exists('smarty_remove_sale_price')) {
+    function smarty_remove_sale_price() {
+        $selected_skus = get_option('smarty_bpu_product_skus', array());
+        $selected_categories = get_option('smarty_bpu_product_categories', array());
+    
+        $args = array(
+            'post_type' => array('product', 'product_variation'),
+            'posts_per_page' => -1,
+            'meta_query' => array(
+                'relation' => 'OR',
+                array(
+                    'key' => '_sku',
+                    'value' => $selected_skus,
+                    'compare' => 'IN'
+                )
+            ),
+            'tax_query' => array(
+                'relation' => 'OR',
+                array(
+                    'taxonomy' => 'product_cat',
+                    'field' => 'term_id',
+                    'terms' => $selected_categories,
+                    'include_children' => false
+                )
+            )
+        );
+    
+        $products = new WP_Query($args);
+    
+        if ($products->have_posts()) {
+            while ($products->have_posts()) {
+                $products->the_post();
+                $product = wc_get_product(get_the_ID());
+    
+                if (!$product) continue;
+    
+                if ($product->is_type('variable')) {
+                    foreach ($product->get_children() as $child_id) {
+                        $child_product = wc_get_product($child_id);
+                        $child_product->set_sale_price('');
+                        $child_product->save();  // Ensure each child product is saved after removing the sale price
+                    }
+                } else {
+                    $product->set_sale_price('');
+                    $product->save();  // Save the product to commit changes
+                }
+            }
+        } else {
+            error_log('No products found matching the criteria');
+        }
+    
+        set_transient('smarty_bulk_price_update_notice', 'Sale prices removed successfully!', 45);
+        wp_redirect(admin_url('admin.php?page=smarty-bulk-price-updater'));
+        exit;
+    }
+    
+}
+
 if (!function_exists('smarty_save_form_values')) {
     function smarty_save_form_values() {
         update_option('smarty_bpu_product_skus', isset($_POST['smarty_bpu_product_skus']) ? $_POST['smarty_bpu_product_skus'] : array());
@@ -387,6 +451,10 @@ if (!function_exists('smarty_save_form_values')) {
         update_option('smarty_bpu_price_increase', isset($_POST['smarty_bpu_price_increase']) ? $_POST['smarty_bpu_price_increase'] : '0');
         update_option('smarty_bpu_price_decrease', isset($_POST['smarty_bpu_price_decrease']) ? $_POST['smarty_bpu_price_decrease'] : '0');
         update_option('smarty_bpu_sale_price_percentage', isset($_POST['smarty_bpu_sale_price_percentage']) ? $_POST['smarty_bpu_sale_price_percentage'] : '0');
+
+        // Clear transients
+        delete_transient('smarty_bulk_price_update_notice');
+        delete_transient('smarty_bulk_price_update_errors');
     }
 }
 
