@@ -164,8 +164,8 @@ if (!function_exists('smarty_increase_product_price')) {
     function smarty_increase_product_price() {
         $selected_skus = get_option('smarty_bpu_product_skus', array());
         $selected_categories = get_option('smarty_bpu_product_categories', array());
-        $smarty_bpu_price_increase = floatval(get_option('smarty_bpu_price_increase', '0'));
-        $smarty_bpu_sale_price_percentage = floatval(get_option('smarty_bpu_sale_price_percentage', '0'));
+        $price_increase = floatval(get_option('smarty_bpu_price_increase', '0'));
+        $price_percentage = floatval(get_option('smarty_bpu_sale_price_percentage', '0'));
 
         $args = array(
             'post_type' => array('product', 'product_variation'),
@@ -207,16 +207,19 @@ if (!function_exists('smarty_increase_product_price')) {
                 if ($product->is_type('variable')) {
                     foreach ($product->get_children() as $child_id) {
                         $variation = wc_get_product($child_id);
-                        $variation_regular_price = floatval($variation->get_regular_price());
-                        $variation_new_sale_price = $variation_regular_price * (1 - ($sale_price_percentage / 100));
-
-                        update_post_meta($child_id, '_sale_price', $variation_new_sale_price);
-                        $variation->set_sale_price($variation_new_sale_price);
-                        $variation->save();
+                        if ($variation && in_array($variation->get_sku(), $selected_skus)) {
+                            $current_price = floatval($variation->get_regular_price());
+                            $new_price = $current_price * (1 + ($price_increase / 100));
+                            $variation->set_regular_price($new_price);
+                            $variation->set_sale_price('');
+                            $variation->save();
+                        }
                     }
                 } else {
-                    update_post_meta($product->get_id(), '_sale_price', $new_sale_price);
-                    $product->set_sale_price($new_sale_price);
+                    $current_price = floatval($product->get_regular_price());
+                    $new_price = $current_price * (1 + ($price_increase / 100));
+                    $product->set_regular_price($new_price);
+                    $product->set_sale_price('');
                     $product->save();
                 }
             }
@@ -283,16 +286,19 @@ if (!function_exists('smarty_decrease_product_price')) {
                 if ($product->is_type('variable')) {
                     foreach ($product->get_children() as $child_id) {
                         $variation = wc_get_product($child_id);
-                        $variation_regular_price = floatval($variation->get_regular_price());
-                        $variation_new_sale_price = $variation_regular_price * (1 - ($sale_price_percentage / 100));
-    
-                        update_post_meta($child_id, '_sale_price', $variation_new_sale_price);
-                        $variation->set_sale_price($variation_new_sale_price);
-                        $variation->save();
+                        if ($variation && in_array($variation->get_sku(), $selected_skus)) {
+                            $current_price = floatval($variation->get_regular_price());
+                            $new_price = $current_price * (1 - ($price_decrease / 100));
+                            $variation->set_regular_price($new_price);
+                            $variation->set_sale_price('');
+                            $variation->save();
+                        }
                     }
                 } else {
-                    update_post_meta($product->get_id(), '_sale_price', $new_sale_price);
-                    $product->set_sale_price($new_sale_price);
+                    $current_price = floatval($product->get_regular_price());
+                    $new_price = $current_price * (1 - ($price_decrease / 100));
+                    $product->set_regular_price($new_price);
+                    $product->set_sale_price('');
                     $product->save();
                 }
             }
@@ -355,21 +361,21 @@ if (!function_exists('smarty_apply_sale_price_percentage')) {
 
                 if ($product->is_type('variable')) {
                     foreach ($product->get_children() as $child_id) {
-                        $child_product = wc_get_product($child_id);
-                        $child_regular_price = floatval($child_product->get_regular_price());
-                        $child_new_sale_price = $child_regular_price * (1 - ($sale_price_percentage / 100));
-
-                        update_post_meta($child_id, '_sale_price', $child_new_sale_price);
-                        $child_product->set_sale_price($child_new_sale_price);
-                        $child_product->save();
+                        $variation = wc_get_product($child_id);
+                        if ($variation && in_array($variation->get_sku(), $selected_skus)) {
+                            $regular_price = floatval($variation->get_regular_price());
+                            $new_sale_price = $regular_price * (1 - ($sale_price_percentage / 100));
+                            $variation->set_sale_price($new_sale_price);
+                            $variation->save();
+                            error_log("Updated sale price for variation $child_id of product $product_id");
+                        }
                     }
                 } else {
                     $regular_price = floatval($product->get_regular_price());
                     $new_sale_price = $regular_price * (1 - ($sale_price_percentage / 100));
-
-                    update_post_meta($product->get_id(), '_sale_price', $new_sale_price);
                     $product->set_sale_price($new_sale_price);
                     $product->save();
+                    error_log("Updated sale price for product $product_id");
                 }
             }
         } else {
