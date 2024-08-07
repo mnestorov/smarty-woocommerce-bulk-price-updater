@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SM - WooCommerce Bulk Price Updater
  * Plugin URI:  https://smartystudio.net/smarty-bulk-price-updater
- * Description: 
+ * Description: A robust solution for WooCommerce store administrators to bulk update product prices efficiently.
  * Version:     1.0.0
  * Author:      Smarty Studio | Martin Nestorov
  * Author URI:  https://smartystudio.net
@@ -44,6 +44,9 @@ if (!function_exists('smarty_add_custom_menu')) {
 
 if (!function_exists('smarty_price_update_callback')) {
     function smarty_price_update_callback() {
+        error_log('Form submitted, checking which submit button was pressed');
+        error_log('Form data: ' . print_r($_POST, true));
+
         if (isset($_POST['smarty_bpu_submit'])) {
             error_log('Update submitted');
     
@@ -61,11 +64,6 @@ if (!function_exists('smarty_price_update_callback')) {
             // Handle sale price percentage adjustment independently
             if (isset($_POST['smarty_bpu_sale_price_percentage']) && $_POST['smarty_bpu_sale_price_percentage'] != 0) {
                 smarty_apply_sale_price_percentage();
-            }
-
-            if (isset($_POST['smarty_bpu_remove_sale_prices'])) {
-                smarty_remove_sale_price();
-                return; // Exit to prevent further processing
             }
         } ?>
         <div class="wrap">
@@ -144,7 +142,6 @@ if (!function_exists('smarty_price_update_callback')) {
                 </table>
                 <p class="submit">
                     <input type="submit" name="smarty_bpu_submit" class="button button-primary" value="<?php echo __('Save Changes', 'smarty-bulk-price-updater'); ?>">
-                    <input type="submit" name="smarty_bpu_remove_sale_prices" class="button button-secondary" value="<?php echo __('Remove Sale Prices', 'smarty-bulk-price-updater'); ?>">
                 </p>
             </form>
         </div>
@@ -162,24 +159,15 @@ if (!function_exists('smarty_price_update_callback')) {
 
 if (!function_exists('smarty_increase_product_price')) {
     function smarty_increase_product_price() {
+        error_log("Function called: smarty_increase_product_price");
         $selected_skus = get_option('smarty_bpu_product_skus', array());
         $selected_categories = get_option('smarty_bpu_product_categories', array());
-        $price_increase = floatval(get_option('smarty_bpu_price_increase', '0'));
-        $price_percentage = floatval(get_option('smarty_bpu_sale_price_percentage', '0'));
+        $price_decrease = floatval(get_option('smarty_bpu_price_decrease', '0'));
 
         $args = array(
             'post_type' => array('product', 'product_variation'),
             'posts_per_page' => -1,
-            'meta_query' => array(
-                'relation' => 'OR',
-                array(
-                    'key' => '_sku',
-                    'value' => $selected_skus,
-                    'compare' => 'IN'
-                )
-            ),
             'tax_query' => array(
-                'relation' => 'OR',
                 array(
                     'taxonomy' => 'product_cat',
                     'field' => 'term_id',
@@ -196,31 +184,36 @@ if (!function_exists('smarty_increase_product_price')) {
         if ($products->have_posts()) {
             while ($products->have_posts()) {
                 $products->the_post();
-                $product = wc_get_product(get_the_ID());
-
-                if (!$product) continue;
-
-                $current_regular_price = floatval($product->get_regular_price());
-                $new_regular_price = $current_regular_price * (1 + ($price_increase / 100));
-                $new_sale_price = $new_regular_price * (1 - ($sale_price_percentage / 100));
-
+                $product_id = get_the_ID();
+                $product = wc_get_product($product_id);
+    
                 if ($product->is_type('variable')) {
                     foreach ($product->get_children() as $child_id) {
-                        $variation = wc_get_product($child_id);
-                        if ($variation && in_array($variation->get_sku(), $selected_skus)) {
-                            $current_price = floatval($variation->get_regular_price());
-                            $new_price = $current_price * (1 + ($price_increase / 100));
-                            $variation->set_regular_price($new_price);
-                            $variation->set_sale_price('');
-                            $variation->save();
+                        $child_product = wc_get_product($child_id);
+                        $sku = $child_product->get_sku();
+                        if (in_array($sku, $selected_skus)) {
+                            $regular_price = floatval(get_post_meta($child_id, '_regular_price', true));
+                            $new_price = $regular_price * (1 + ($price_increase / 100));
+                            update_post_meta($child_id, '_regular_price', $new_price);
+                            update_post_meta($child_id, '_sale_price', '');
+                            $child_product->set_regular_price($new_price);
+                            $child_product->set_sale_price('');
+                            $child_product->save();
+                            error_log("Updated Variation ID: $child_id | New Price: $new_price");
                         }
                     }
                 } else {
-                    $current_price = floatval($product->get_regular_price());
-                    $new_price = $current_price * (1 + ($price_increase / 100));
-                    $product->set_regular_price($new_price);
-                    $product->set_sale_price('');
-                    $product->save();
+                    $sku = $product->get_sku();
+                    if (in_array($sku, $selected_skus)) {
+                        $regular_price = floatval(get_post_meta($product_id, '_regular_price', true));
+                        $new_price = $regular_price * (1 + ($price_increase / 100));
+                        update_post_meta($product_id, '_regular_price', $new_price);
+                        update_post_meta($product_id, '_sale_price', '');
+                        $product->set_regular_price($new_price);
+                        $product->set_sale_price('');
+                        $product->save();
+                        error_log("Updated Product ID: $product_id | New Price: $new_price");
+                    }
                 }
             }
         } else {
@@ -240,25 +233,14 @@ if (!function_exists('smarty_increase_product_price')) {
 if (!function_exists('smarty_decrease_product_price')) {
     function smarty_decrease_product_price() {
         error_log("Function called: smarty_decrease_product_price");
-
         $selected_skus = get_option('smarty_bpu_product_skus', array());
         $selected_categories = get_option('smarty_bpu_product_categories', array());
         $price_decrease = floatval(get_option('smarty_bpu_price_decrease', '0'));
-        $sale_price_percentage = floatval(get_option('smarty_bpu_sale_price_percentage', '0'));
     
         $args = array(
             'post_type' => array('product', 'product_variation'),
             'posts_per_page' => -1,
-            'meta_query' => array(
-                'relation' => 'OR',
-                array(
-                    'key' => '_sku',
-                    'value' => $selected_skus,
-                    'compare' => 'IN'
-                )
-            ),
             'tax_query' => array(
-                'relation' => 'OR',
                 array(
                     'taxonomy' => 'product_cat',
                     'field' => 'term_id',
@@ -275,31 +257,36 @@ if (!function_exists('smarty_decrease_product_price')) {
         if ($products->have_posts()) {
             while ($products->have_posts()) {
                 $products->the_post();
-                $product = wc_get_product(get_the_ID());
-    
-                if (!$product) continue;
-    
-                $current_regular_price = floatval($product->get_regular_price());
-                $new_regular_price = $current_regular_price * (1 - ($price_decrease / 100));
-                $new_sale_price = $new_regular_price * (1 - ($sale_price_percentage / 100));
+                $product_id = get_the_ID();
+                $product = wc_get_product($product_id);
     
                 if ($product->is_type('variable')) {
                     foreach ($product->get_children() as $child_id) {
-                        $variation = wc_get_product($child_id);
-                        if ($variation && in_array($variation->get_sku(), $selected_skus)) {
-                            $current_price = floatval($variation->get_regular_price());
-                            $new_price = $current_price * (1 - ($price_decrease / 100));
-                            $variation->set_regular_price($new_price);
-                            $variation->set_sale_price('');
-                            $variation->save();
+                        $child_product = wc_get_product($child_id);
+                        $sku = $child_product->get_sku();
+                        if (in_array($sku, $selected_skus)) {
+                            $regular_price = floatval(get_post_meta($child_id, '_regular_price', true));
+                            $new_price = $regular_price * (1 - ($price_decrease / 100));
+                            update_post_meta($child_id, '_regular_price', $new_price);
+                            update_post_meta($child_id, '_sale_price', '');
+                            $child_product->set_regular_price($new_price);
+                            $child_product->set_sale_price('');
+                            $child_product->save();
+                            error_log("Updated Variation ID: $child_id | New Price: $new_price");
                         }
                     }
                 } else {
-                    $current_price = floatval($product->get_regular_price());
-                    $new_price = $current_price * (1 - ($price_decrease / 100));
-                    $product->set_regular_price($new_price);
-                    $product->set_sale_price('');
-                    $product->save();
+                    $sku = $product->get_sku();
+                    if (in_array($sku, $selected_skus)) {
+                        $regular_price = floatval(get_post_meta($product_id, '_regular_price', true));
+                        $new_price = $regular_price * (1 - ($price_decrease / 100));
+                        update_post_meta($product_id, '_regular_price', $new_price);
+                        update_post_meta($product_id, '_sale_price', '');
+                        $product->set_regular_price($new_price);
+                        $product->set_sale_price('');
+                        $product->save();
+                        error_log("Updated Product ID: $product_id | New Price: $new_price");
+                    }
                 }
             }
         } else {
@@ -322,7 +309,7 @@ if (!function_exists('smarty_apply_sale_price_percentage')) {
         $selected_skus = get_option('smarty_bpu_product_skus', array());
         $selected_categories = get_option('smarty_bpu_product_categories', array());
         $sale_price_percentage = floatval(get_option('smarty_bpu_sale_price_percentage', '0'));
-
+    
         error_log('Selected SKUs: ' . implode(', ', $selected_skus));
         error_log('Selected Categories: ' . implode(', ', $selected_categories));
         error_log('Sale Price Percentage: ' . $sale_price_percentage);
@@ -330,16 +317,7 @@ if (!function_exists('smarty_apply_sale_price_percentage')) {
         $args = array(
             'post_type' => array('product', 'product_variation'),
             'posts_per_page' => -1,
-            'meta_query' => array(
-                'relation' => 'OR',
-                array(
-                    'key' => '_sku',
-                    'value' => $selected_skus,
-                    'compare' => 'IN'
-                )
-            ),
             'tax_query' => array(
-                'relation' => 'OR',
                 array(
                     'taxonomy' => 'product_cat',
                     'field' => 'term_id',
@@ -355,27 +333,32 @@ if (!function_exists('smarty_apply_sale_price_percentage')) {
         if ($products->have_posts()) {
             while ($products->have_posts()) {
                 $products->the_post();
-                $product = wc_get_product(get_the_ID());
-
-                if (!$product) continue;
-
+                $product_id = get_the_ID();
+                $product = wc_get_product($product_id);
+    
                 if ($product->is_type('variable')) {
                     foreach ($product->get_children() as $child_id) {
-                        $variation = wc_get_product($child_id);
-                        if ($variation && in_array($variation->get_sku(), $selected_skus)) {
-                            $regular_price = floatval($variation->get_regular_price());
+                        $child_product = wc_get_product($child_id);
+                        $sku = $child_product->get_sku();
+                        if (in_array($sku, $selected_skus)) {
+                            $regular_price = floatval(get_post_meta($child_id, '_regular_price', true));
                             $new_sale_price = $regular_price * (1 - ($sale_price_percentage / 100));
-                            $variation->set_sale_price($new_sale_price);
-                            $variation->save();
-                            error_log("Updated sale price for variation $child_id of product $product_id");
+                            update_post_meta($child_id, '_sale_price', $new_sale_price);
+                            $child_product->set_sale_price($new_sale_price);
+                            $child_product->save();
+                            error_log("Updated Variation ID: $child_id | New Sale Price: $new_sale_price");
                         }
                     }
                 } else {
-                    $regular_price = floatval($product->get_regular_price());
-                    $new_sale_price = $regular_price * (1 - ($sale_price_percentage / 100));
-                    $product->set_sale_price($new_sale_price);
-                    $product->save();
-                    error_log("Updated sale price for product $product_id");
+                    $sku = $product->get_sku();
+                    if (in_array($sku, $selected_skus)) {
+                        $regular_price = floatval(get_post_meta($product_id, '_regular_price', true));
+                        $new_sale_price = $regular_price * (1 - ($sale_price_percentage / 100));
+                        update_post_meta($product_id, '_sale_price', $new_sale_price);
+                        $product->set_sale_price($new_sale_price);
+                        $product->save();
+                        error_log("Updated Product ID: $product_id | New Sale Price: $new_sale_price");
+                    }
                 }
             }
         } else {
@@ -390,64 +373,6 @@ if (!function_exists('smarty_apply_sale_price_percentage')) {
             echo '<div class="notice notice-success is-dismissible"><p>Sale prices adjusted successfully.</p></div>';
         }
     }
-}
-
-if (!function_exists('smarty_remove_sale_price')) {
-    function smarty_remove_sale_price() {
-        $selected_skus = get_option('smarty_bpu_product_skus', array());
-        $selected_categories = get_option('smarty_bpu_product_categories', array());
-    
-        $args = array(
-            'post_type' => array('product', 'product_variation'),
-            'posts_per_page' => -1,
-            'meta_query' => array(
-                'relation' => 'OR',
-                array(
-                    'key' => '_sku',
-                    'value' => $selected_skus,
-                    'compare' => 'IN'
-                )
-            ),
-            'tax_query' => array(
-                'relation' => 'OR',
-                array(
-                    'taxonomy' => 'product_cat',
-                    'field' => 'term_id',
-                    'terms' => $selected_categories,
-                    'include_children' => false
-                )
-            )
-        );
-    
-        $products = new WP_Query($args);
-    
-        if ($products->have_posts()) {
-            while ($products->have_posts()) {
-                $products->the_post();
-                $product = wc_get_product(get_the_ID());
-    
-                if (!$product) continue;
-    
-                if ($product->is_type('variable')) {
-                    foreach ($product->get_children() as $child_id) {
-                        $child_product = wc_get_product($child_id);
-                        $child_product->set_sale_price('');
-                        $child_product->save();  // Ensure each child product is saved after removing the sale price
-                    }
-                } else {
-                    $product->set_sale_price('');
-                    $product->save();  // Save the product to commit changes
-                }
-            }
-        } else {
-            error_log('No products found matching the criteria');
-        }
-    
-        set_transient('smarty_bulk_price_update_notice', 'Sale prices removed successfully!', 45);
-        wp_redirect(admin_url('admin.php?page=smarty-bulk-price-updater'));
-        exit;
-    }
-    
 }
 
 if (!function_exists('smarty_save_form_values')) {
@@ -476,16 +401,16 @@ if (!function_exists('smarty_get_form_values')) {
     }
 }
 
-if (!function_exists('smarty_admin_notices')) {
-    function smarty_admin_notices() {
-        if ($notice = get_transient('smarty_bulk_price_update_notice')) {
-            echo "<div class='notice notice-success is-dismissible'><p>{$notice}</p></div>";
-            delete_transient('smarty_bulk_price_update_notice');
-        }
-        if ($error = get_transient('smarty_bulk_price_update_errors')) {
-            echo "<div class='notice notice-error is-dismissible'><p>{$error}</p></div>";
-            delete_transient('smarty_bulk_price_update_errors');
-        }
+function smarty_admin_notices() {
+    if ($notice = get_transient('smarty_bulk_price_update_notice')) {
+        echo "<div class='notice notice-success is-dismissible'><p>{$notice}</p></div>";
+        delete_transient('smarty_bulk_price_update_notice');
+        error_log('Displaying success notice and deleting transient.');
     }
-    add_action('admin_notices', 'smarty_admin_notices');
+    if ($error = get_transient('smarty_bulk_price_update_errors')) {
+        echo "<div class='notice notice-error is-dismissible'><p>{$error}</p></div>";
+        delete_transient('smarty_bulk_price_update_errors');
+        error_log('Displaying error notice and deleting transient.');
+    }
 }
+add_action('admin_notices', 'smarty_admin_notices');
