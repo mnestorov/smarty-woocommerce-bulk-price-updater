@@ -28,8 +28,8 @@ This plugin provides a robust solution for WooCommerce store administrators to b
 
 ### Price Update Logic
 
-- **SKU <span color="green">(Optional)</span>**: If specified, prices are updated only for products with the selected SKUs. **_However, a category must also be selected; otherwise, no changes will be applied_**.
-- **Categories <span color="red">(Required)</span>**: The selection of categories is mandatory. If no SKUs are selected, prices update for all products within the selected categories.
+- **SKU <span style="color:green">(Optional)</span>**: If specified, prices are updated only for products with the selected SKUs. **_However, a category must also be selected; otherwise, no changes will be applied_**.
+- **Categories <span style="color:red">(Required)</span>**: The selection of categories is mandatory. If no SKUs are selected, prices update for all products within the selected categories.
 - **SKU and Categories**: If both are selected, prices update only for products with the specified SKUs within the selected categories. If the SKU is selected but no category is selected, even if a percentage change is specified, the prices will not change due to the requirement of category selection.
 
 ### Sale Price Calculation
