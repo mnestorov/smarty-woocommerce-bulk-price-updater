@@ -8,6 +8,9 @@
  * Author URI:  https://smartystudio.net
  * License:     GPL-2.0+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
+ * WC requires at least: 3.5.0
+ * WC tested up to: 9.0.2
+ * Requires Plugins: woocommerce
  */
 
 // If this file is called directly, abort.
@@ -162,7 +165,7 @@ if (!function_exists('smarty_increase_product_price')) {
         error_log("Function called: smarty_increase_product_price");
         $selected_skus = get_option('smarty_bpu_product_skus', array());
         $selected_categories = get_option('smarty_bpu_product_categories', array());
-        $price_decrease = floatval(get_option('smarty_bpu_price_decrease', '0'));
+        $price_increase = floatval(get_option('smarty_bpu_price_increase', '0'));
 
         $args = array(
             'post_type' => array('product', 'product_variation'),
