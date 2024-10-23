@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: SM - WooCommerce Bulk Price Updater
- * Plugin URI:  https://github.dev/smartystudio/smarty-woocommerce-bulk-price-updater
+ * Plugin URI:  https://github.com/mnestorov/smarty-woocommerce-bulk-price-updater
  * Description: A robust solution for WooCommerce store administrators to bulk update product prices efficiently.
  * Version:     1.0.0
  * Author:      Smarty Studio | Martin Nestorov
- * Author URI:  https://smartystudio.net
+ * Author URI:  https://github.com/mnestorov
  * License:     GPL-2.0+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
  * WC requires at least: 3.5.0
